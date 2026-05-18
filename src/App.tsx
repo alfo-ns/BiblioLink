@@ -61,7 +61,22 @@ const MOCK_DATA: LinkItem[] = [
 ];
 
 function App() {
-  const [links, setLinks] = useState<LinkItem[]>(MOCK_DATA);
+  const [links, setLinks] = useState<LinkItem[]>(() => {
+    const saved = localStorage.getItem('bibliolink-data');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return MOCK_DATA;
+      }
+    }
+    return MOCK_DATA;
+  });
+  
+  React.useEffect(() => {
+    localStorage.setItem('bibliolink-data', JSON.stringify(links));
+  }, [links]);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   
   // Search and Filter State
@@ -114,10 +129,16 @@ function App() {
 
     const parsedTags = newTags.split(',').map(t => t.trim()).filter(Boolean);
 
+    // Prevent javascript: URLs (XSS protection)
+    let safeUrl = newUrl;
+    if (!safeUrl.toLowerCase().startsWith('http://') && !safeUrl.toLowerCase().startsWith('https://')) {
+      safeUrl = 'https://' + safeUrl;
+    }
+
     if (editingId) {
       setLinks(links.map(l => l.id === editingId ? {
         ...l,
-        url: newUrl,
+        url: safeUrl,
         type: newType,
         tags: parsedTags,
         notes: newNotes,
@@ -125,7 +146,7 @@ function App() {
     } else {
       const newItem: LinkItem = {
         id: Date.now().toString(),
-        url: newUrl,
+        url: safeUrl,
         title: 'New Saved Link - ' + newUrl.substring(0, 20) + '...',
         description: 'Auto-fetched description placeholder.',
         type: newType,
@@ -166,8 +187,13 @@ function App() {
       try {
         const importedData = JSON.parse(event.target?.result as string);
         if (Array.isArray(importedData)) {
-          // simple validation
-          const validData = importedData.filter(item => item.id && item.url && item.title);
+          // Security validation: only keep items with safe URLs
+          const validData = importedData.filter(item => {
+            if (!item.id || !item.url || !item.title) return false;
+            const urlLower = String(item.url).toLowerCase();
+            return urlLower.startsWith('http://') || urlLower.startsWith('https://');
+          });
+          
           setLinks(prev => {
             const newLinks = [...validData];
             // Merge or overwrite? Let's just prepend them and remove duplicates by ID
