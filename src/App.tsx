@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { 
-  Search, Plus, LayoutGrid, Library, Settings, Trash2, 
+  Search, Plus, Library, Settings, Trash2, 
   BookOpen, Video, MessageSquare, Image as ImageIcon,
-  ExternalLink, X, Edit, Edit2, Download, Upload
+  ExternalLink, X, Edit2, Download, Upload
 } from 'lucide-react';
 import './App.css';
 
