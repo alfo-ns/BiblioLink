@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { 
   Search, Plus, Library, Settings, Trash2, 
   BookOpen, Video, MessageSquare, Image as ImageIcon,
@@ -26,65 +26,28 @@ interface LinkItem {
   dateAdded: string;
 }
 
-// Mock Data
-const MOCK_DATA: LinkItem[] = [
-  {
-    id: '1',
-    url: 'https://example.com/article1',
-    title: 'The Future of Agentic AI in Software Development',
-    description: 'A deep dive into how LLM-powered agents are transforming the way we write, review, and deploy code.',
-    type: 'article',
-    tags: ['AI', 'Development'],
-    notes: 'Great insights on autonomous coding. Need to reference this in next week\'s presentation.',
-    imageUrl: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&w=600&q=80',
-    dateAdded: '2026-05-18T10:00:00Z'
-  },
-  {
-    id: '2',
-    url: 'https://youtube.com/watch?v=xyz',
-    title: 'Building Modern UI with Glassmorphism',
-    description: 'Learn how to create stunning glass effects using CSS backdrops, gradients, and subtle shadows.',
-    type: 'video',
-    tags: ['CSS', 'Design', 'UI'],
-    notes: 'Use this technique for the new dashboard redesign.',
-    imageUrl: 'https://images.unsplash.com/photo-1558655146-d09347e92766?auto=format&fit=crop&w=600&q=80',
-    dateAdded: '2026-05-17T14:30:00Z'
-  },
-  {
-    id: '3',
-    url: 'https://twitter.com/example/status/123',
-    title: 'Thread: 10 React Performance Tips',
-    description: 'Stop your React app from unnecessary re-renders with these 10 practical tips.',
-    type: 'post',
-    tags: ['React', 'Performance'],
-    notes: 'Tip #4 about memoization is pure gold.',
-    imageUrl: 'https://images.unsplash.com/photo-1618477247222-ac60c62187b5?auto=format&fit=crop&w=600&q=80',
-    dateAdded: '2026-05-16T09:15:00Z'
-  }
-];
-
 function App() {
   const { data: session } = useSession();
-  const [links, setLinks] = useState<LinkItem[]>(MOCK_DATA);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [links, setLinks] = useState<LinkItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  React.useEffect(() => {
-    const saved = localStorage.getItem('bibliolink-data');
-    if (saved) {
-      try {
-        setLinks(JSON.parse(saved));
-      } catch (e) {
-        console.error(e);
+  const loadLinks = useCallback(async () => {
+    try {
+      const res = await fetch('/api/links');
+      if (res.ok) {
+        const data = await res.json();
+        setLinks(data);
       }
+    } catch (e) {
+      console.error('Failed to load links:', e);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoaded(true);
   }, []);
-  
-  React.useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem('bibliolink-data', JSON.stringify(links));
-    }
-  }, [links, isLoaded]);
+
+  useEffect(() => {
+    loadLinks();
+  }, [loadLinks]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   
@@ -147,40 +110,59 @@ function App() {
       safeUrl = 'https://' + safeUrl;
     }
 
-    if (editingId) {
-      setLinks(links.map(l => l.id === editingId ? {
-        ...l,
-        url: safeUrl,
-        type: newType,
-        tags: parsedTags,
-        notes: newNotes,
-      } : l));
-      setIsModalOpen(false);
-      setIsSaving(false);
-    } else {
-      // Fetch metadata for new link
-      const meta = await fetchUrlMetadata(safeUrl);
-      
-      const newItem: LinkItem = {
-        id: Date.now().toString(),
-        url: safeUrl,
-        title: meta.success && meta.title ? meta.title : ('Saved Link - ' + safeUrl.substring(0, 30) + '...'),
-        description: meta.success && meta.description ? meta.description : '',
-        type: newType,
-        tags: parsedTags,
-        notes: newNotes,
-        imageUrl: meta.success && meta.image ? meta.image : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80',
-        dateAdded: new Date().toISOString()
-      };
-      setLinks([newItem, ...links]);
-      setIsModalOpen(false);
-      setIsSaving(false);
+    try {
+      if (editingId) {
+        // UPDATE via API
+        const res = await fetch(`/api/links/${editingId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: safeUrl, type: newType, tags: parsedTags, notes: newNotes }),
+        });
+        if (res.ok) {
+          const updated = await res.json();
+          setLinks(links.map(l => l.id === editingId ? updated : l));
+        }
+      } else {
+        // Fetch metadata for new link
+        const meta = await fetchUrlMetadata(safeUrl);
+        
+        // CREATE via API
+        const res = await fetch('/api/links', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: safeUrl,
+            title: meta.success && meta.title ? meta.title : ('Saved Link - ' + safeUrl.substring(0, 30) + '...'),
+            description: meta.success && meta.description ? meta.description : '',
+            type: newType,
+            tags: parsedTags,
+            notes: newNotes,
+            imageUrl: meta.success && meta.image ? meta.image : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80',
+          }),
+        });
+        if (res.ok) {
+          const created = await res.json();
+          setLinks([created, ...links]);
+        }
+      }
+    } catch (err) {
+      console.error('Save failed:', err);
     }
+
+    setIsModalOpen(false);
+    setIsSaving(false);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if(confirm('Are you sure you want to delete this link?')) {
-      setLinks(links.filter(l => l.id !== id));
+      try {
+        const res = await fetch(`/api/links/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          setLinks(links.filter(l => l.id !== id));
+        }
+      } catch (err) {
+        console.error('Delete failed:', err);
+      }
     }
   };
 
@@ -200,25 +182,22 @@ function App() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const importedData = JSON.parse(event.target?.result as string);
         if (Array.isArray(importedData)) {
-          // Security validation: only keep items with safe URLs
-          const validData = importedData.filter(item => {
-            if (!item.id || !item.url || !item.title) return false;
-            const urlLower = String(item.url).toLowerCase();
-            return urlLower.startsWith('http://') || urlLower.startsWith('https://');
+          const res = await fetch('/api/links/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(importedData),
           });
-          
-          setLinks(prev => {
-            const newLinks = [...validData];
-            // Merge or overwrite? Let's just prepend them and remove duplicates by ID
-            const existingIds = new Set(newLinks.map(l => l.id));
-            const merged = [...newLinks, ...prev.filter(l => !existingIds.has(l.id))];
-            return merged;
-          });
-          alert('Import successful!');
+          if (res.ok) {
+            const result = await res.json();
+            alert(`Import successful! ${result.imported} links imported.`);
+            loadLinks(); // Reload from DB
+          } else {
+            alert('Import failed.');
+          }
         } else {
           alert('Invalid JSON format.');
         }
