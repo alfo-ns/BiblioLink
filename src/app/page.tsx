@@ -62,21 +62,26 @@ const MOCK_DATA: LinkItem[] = [
 ];
 
 function App() {
-  const [links, setLinks] = useState<LinkItem[]>(() => {
+  const [links, setLinks] = useState<LinkItem[]>(MOCK_DATA);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  React.useEffect(() => {
     const saved = localStorage.getItem('bibliolink-data');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        setLinks(JSON.parse(saved));
       } catch (e) {
-        return MOCK_DATA;
+        console.error(e);
       }
     }
-    return MOCK_DATA;
-  });
+    setIsLoaded(true);
+  }, []);
   
   React.useEffect(() => {
-    localStorage.setItem('bibliolink-data', JSON.stringify(links));
-  }, [links]);
+    if (isLoaded) {
+      localStorage.setItem('bibliolink-data', JSON.stringify(links));
+    }
+  }, [links, isLoaded]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   
