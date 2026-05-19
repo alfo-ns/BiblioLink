@@ -1,0 +1,11 @@
+services:
+  bibliolink:
+    build: .
+    container_name: bibliolink
+    restart: always
+    ports:
+      - "3001:3000"
+    env_file:
+      - .env
+    volumes:
+      - /opt/data/bibliolink:/app/data

@@ -6,7 +6,6 @@ import {
   ExternalLink, X, Edit2, Download, Upload, Loader2, LogIn, LogOut
 } from 'lucide-react';
 import { useSession, signIn, signOut } from 'next-auth/react';
-import { fetchUrlMetadata } from './actions';
 import './App.css';
 
 // Types
@@ -124,7 +123,17 @@ function App() {
         }
       } else {
         // Fetch metadata for new link
-        const meta = await fetchUrlMetadata(safeUrl);
+       
+
+const metadataRes = await fetch('/api/metadata', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({ url: safeUrl }),
+});
+
+const meta = await metadataRes.json();
         
         // CREATE via API
         const res = await fetch('/api/links', {
