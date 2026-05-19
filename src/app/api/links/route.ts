@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import type { Link } from '@prisma/client';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
@@ -11,7 +12,7 @@ export async function GET() {
     });
 
     // Convert tags from comma-separated string to array
-    const formatted = links.map(link => ({
+    const formatted = links.map((link: Link) => ({
       ...link,
       tags: link.tags ? link.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
       dateAdded: link.dateAdded.toISOString(),
