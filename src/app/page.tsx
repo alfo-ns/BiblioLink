@@ -3,8 +3,10 @@ import React, { useState, useMemo, useRef } from 'react';
 import { 
   Search, Plus, Library, Settings, Trash2, 
   BookOpen, Video, MessageSquare, Image as ImageIcon,
-  ExternalLink, X, Edit2, Download, Upload
+  ExternalLink, X, Edit2, Download, Upload, Loader2, LogIn, LogOut
 } from 'lucide-react';
+import { useSession, signIn, signOut } from 'next-auth/react';
+import { fetchUrlMetadata } from './actions';
 import './App.css';
 
 // Types
@@ -62,6 +64,7 @@ const MOCK_DATA: LinkItem[] = [
 ];
 
 function App() {
+  const { data: session } = useSession();
   const [links, setLinks] = useState<LinkItem[]>(MOCK_DATA);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -97,6 +100,7 @@ function App() {
   const [newType, setNewType] = useState<ContentType>('article');
   const [newNotes, setNewNotes] = useState('');
   const [newTags, setNewTags] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -129,10 +133,12 @@ function App() {
     setIsModalOpen(true);
   };
 
-  const handleSaveLink = (e: React.FormEvent) => {
+  const handleSaveLink = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUrl) return;
 
+    setIsSaving(true);
+    
     const parsedTags = newTags.split(',').map(t => t.trim()).filter(Boolean);
 
     // Prevent javascript: URLs (XSS protection)
@@ -149,22 +155,27 @@ function App() {
         tags: parsedTags,
         notes: newNotes,
       } : l));
+      setIsModalOpen(false);
+      setIsSaving(false);
     } else {
+      // Fetch metadata for new link
+      const meta = await fetchUrlMetadata(safeUrl);
+      
       const newItem: LinkItem = {
         id: Date.now().toString(),
         url: safeUrl,
-        title: 'New Saved Link - ' + newUrl.substring(0, 20) + '...',
-        description: 'Auto-fetched description placeholder.',
+        title: meta.success && meta.title ? meta.title : ('Saved Link - ' + safeUrl.substring(0, 30) + '...'),
+        description: meta.success && meta.description ? meta.description : '',
         type: newType,
         tags: parsedTags,
         notes: newNotes,
-        imageUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80',
+        imageUrl: meta.success && meta.image ? meta.image : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80',
         dateAdded: new Date().toISOString()
       };
       setLinks([newItem, ...links]);
+      setIsModalOpen(false);
+      setIsSaving(false);
     }
-
-    setIsModalOpen(false);
   };
 
   const handleDelete = (id: string) => {
@@ -324,24 +335,33 @@ function App() {
         </div>
 
         <div className="sidebar-bottom">
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-            <button className="btn btn-secondary" style={{ flex: 1, padding: '8px', fontSize: '0.8rem' }} onClick={handleExport}>
-              <Download size={14} /> Export
-            </button>
-            <button className="btn btn-secondary" style={{ flex: 1, padding: '8px', fontSize: '0.8rem' }} onClick={() => fileInputRef.current?.click()}>
-              <Upload size={14} /> Import
-            </button>
-            <input 
-              type="file" 
-              accept=".json" 
-              ref={fileInputRef} 
-              style={{ display: 'none' }} 
-              onChange={handleImport} 
-            />
-          </div>
+          {session && (
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+              <button className="btn btn-secondary" style={{ flex: 1, padding: '8px', fontSize: '0.8rem' }} onClick={handleExport}>
+                <Download size={14} /> Export
+              </button>
+              <button className="btn btn-secondary" style={{ flex: 1, padding: '8px', fontSize: '0.8rem' }} onClick={() => fileInputRef.current?.click()}>
+                <Upload size={14} /> Import
+              </button>
+              <input 
+                type="file" 
+                accept=".json" 
+                ref={fileInputRef} 
+                style={{ display: 'none' }} 
+                onChange={handleImport} 
+              />
+            </div>
+          )}
 
-          <a href="#" className="nav-item"><Settings size={18} /> Settings</a>
-          <a href="#" className="nav-item" style={{ color: '#ef4444' }}><Trash2 size={18} /> Trash</a>
+          {session ? (
+            <button className="nav-item btn-secondary" style={{ width: '100%', border: 'none', background: 'rgba(255,255,255,0.05)' }} onClick={() => signOut()}>
+              <LogOut size={18} /> Logout
+            </button>
+          ) : (
+            <button className="nav-item btn-primary" style={{ width: '100%', border: 'none', color: 'white' }} onClick={() => signIn()}>
+              <LogIn size={18} /> Login for Admin
+            </button>
+          )}
         </div>
       </aside>
 
@@ -366,21 +386,25 @@ function App() {
               </select>
             </div>
 
-            <button className="btn btn-primary" onClick={() => openModal()}>
-              <Plus size={18} /> Add Link
-            </button>
+            {session && (
+              <button className="btn btn-primary" onClick={() => openModal()}>
+                <Plus size={18} /> Add Link
+              </button>
+            )}
           </div>
         </header>
 
         <div className="dashboard-content">
           <div className="cards-grid">
             {/* Quick Add Slot */}
-            <div className="link-card glass quick-add-card" onClick={() => openModal()}>
-              <div className="quick-add-icon">
-                <Plus size={24} />
+            {session && (
+              <div className="link-card glass quick-add-card" onClick={() => openModal()}>
+                <div className="quick-add-icon">
+                  <Plus size={24} />
+                </div>
+                <p style={{ fontWeight: 500 }}>Save new link</p>
               </div>
-              <p style={{ fontWeight: 500 }}>Save new link</p>
-            </div>
+            )}
 
             {/* Link Cards */}
             {processedLinks.map(link => (
@@ -409,12 +433,16 @@ function App() {
                       ))}
                     </div>
                     <div className="card-actions">
-                      <button className="btn-icon" title="Edit" onClick={() => openModal(link)}>
-                        <Edit2 size={16} />
-                      </button>
-                      <button className="btn-icon delete" title="Delete" onClick={() => handleDelete(link.id)}>
-                        <Trash2 size={16} />
-                      </button>
+                      {session && (
+                        <>
+                          <button className="btn-icon" title="Edit" onClick={() => openModal(link)}>
+                            <Edit2 size={16} />
+                          </button>
+                          <button className="btn-icon delete" title="Delete" onClick={() => handleDelete(link.id)}>
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
                       <a href={link.url} target="_blank" rel="noreferrer" className="btn-icon" title="Open Link">
                         <ExternalLink size={16} />
                       </a>
@@ -495,8 +523,10 @@ function App() {
               </div>
 
               <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">{editingId ? 'Save Changes' : 'Save Link'}</button>
+                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)} disabled={isSaving}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                  {isSaving ? <><Loader2 size={16} className="animate-spin" /> Fetching Preview...</> : (editingId ? 'Save Changes' : 'Save Link')}
+                </button>
               </div>
             </form>
           </div>
