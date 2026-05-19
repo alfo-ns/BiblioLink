@@ -1,0 +1,31 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Link {
+  id          String   @id @default(cuid())
+  url         String
+  title       String
+  description String?
+  type        String   @default("article") // article, video, post, photo
+  tags        String   // comma separated tags
+  notes       String?
+  imageUrl    String?
+  dateAdded   DateTime @default(now())
+  
+  // Later we can attach users, for now simple self-hosted app
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+}
