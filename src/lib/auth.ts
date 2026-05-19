@@ -44,5 +44,5 @@ export const authOptions: NextAuthOptions = {
   pages: {
     // We can define custom login page here later, or use default
   },
-  secret: process.env.NEXTAUTH_SECRET || "super-secret-key-for-local-dev-only",
+  secret: process.env.NEXTAUTH_SECRET,
 };
